@@ -3,7 +3,7 @@ import logging
 import time
 from collections import deque
 
-import aioredis
+from redis import asyncio as aioredis
 from faster_whisper import WhisperModel
 
 from .config import REDIS_SERVER

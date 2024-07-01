@@ -3,7 +3,7 @@ import collections
 import wave
 from collections import deque
 
-import aioredis
+from redis import asyncio as aioredis
 import pyaudio
 import webrtcvad
 import logging
