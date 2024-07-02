@@ -6,3 +6,5 @@ python-dotenv==1.0.0
 faster-whisper==0.10.1
 fire
 boto3
+soundfile
+playsound

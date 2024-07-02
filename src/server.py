@@ -9,6 +9,7 @@ from faster_whisper import WhisperModel
 from .config import REDIS_SERVER
 from .utils import asyncformer
 from .translate import translate
+from .tts import tts
 
 CONVERSATION = deque(maxlen=100)
 MODEL_SIZE = "large-v3"
@@ -24,7 +25,7 @@ async def transcribe():
     def b_transcribe():
         # transcribe audio to text
         start_time = time.time()
-        segments, info = model.transcribe("chunk.mp3",
+        segments, info = model.transcribe("chunk.wav",
                                           beam_size=5,
                                           no_speech_threshold=0.8,
                                          )
@@ -50,7 +51,7 @@ async def transcribe():
             if content is None:
                 continue
 
-            with open('chunk.mp3', 'wb') as f:
+            with open('chunk.wav', 'wb') as f:
                 f.write(content[1])
 
             text, _period = await asyncformer(b_transcribe)
@@ -60,8 +61,16 @@ async def transcribe():
             logging.info(t)
             CONVERSATION.append(text)
             translated = translate(text)
-            
+            logging.info(translated)
+            for lang in translated:
+                lang_text = translated[lang]
+                logging.info(lang_text)
 
+                wav = tts(lang_text)
+                soundfile.write(f"output_{lang}.wav", wav, 24000)
+                with open(f"output_{lang}.wav", 'rb') as f:
+                    await redis.rpush(f'STS:{lang}', f.read())
+                    logging.info(f'Sync {lang} tts to STS:{lang}')                
 
 async def main():
     await asyncio.gather(transcribe())
