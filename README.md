@@ -40,20 +40,20 @@ REDIS_SERVER=rediss://r-noel2j.serverless.usw2.cache.amazonaws.com:6379(base) sa
 负责录音，然后把音频数据发送给服务端，接收服务端返回的识别结果。测试场景M1 Mac
 
 ```bash
-CONDA_SUBDIR=osx-arm64 conda create -n stream-whisper python python=3.11.8
+CONDA_SUBDIR=osx-arm64 conda create -n stream-whisper python python=3.11.8 -y
 conda activate stream-whisper
 brew install portaudio
 pip install --global-option='build_ext' --global-option="-I$(brew --prefix)/include" --global-option="-L$(brew --prefix)/lib" pyaudio
 
 git clone https://github.com/ultrasev/stream-whisper
 cd stream-whisper
-pip3 install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 注：
 - `portaudio19-dev` 是 pyaudio 的依赖，如果系统已安装，可以忽略。
 
-同样需要把 `.env` 文件中的 `REDIS_SERVER` 改成自己的 Redis 地址，在本地机器上运行 `python3 -m src.client`，客户端就启动了。运行前先测试一下麦克风是否正常工作，确认能够正常录音。
+同样需要把 `.env` 文件中的 `REDIS_SERVER` 改成自己的 Redis 地址，在本地机器上运行 `python -m src.client`，客户端就启动了。运行前先测试一下麦克风是否正常工作，确认能够正常录音。
 
 需要通过在公有子网跳板机访问Redis，例如已经在ssh config中配置了jump-server-us-west-2
 ```

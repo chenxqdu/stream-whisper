@@ -53,7 +53,7 @@ def record_until_silence():
     frames = collections.deque(maxlen=30)  # 保存最近 30 个帧
     tmp = collections.deque(maxlen=1000)
     vad = webrtcvad.Vad()
-    vad.set_mode(1)  # 敏感度，0 到 3，0 最不敏感，3 最敏感
+    vad.set_mode(2)  # 敏感度，0 到 3，0 最不敏感，3 最敏感
     triggered = False
     frames.clear()
     ratio = 0.5
