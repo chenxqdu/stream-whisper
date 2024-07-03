@@ -69,7 +69,7 @@ async def transcribe():
                 lang_text = translated[lang]
                 logging.info(lang_text)
                 tasks.append(tts_and_push(lang_text, lang, redis))   
-            await asyncio.gather(tasks)
+            await asyncio.gather(*tasks)
             
 
 async def tts_and_push(text, lang, redis):
