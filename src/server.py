@@ -5,6 +5,7 @@ from collections import deque
 
 from redis import asyncio as aioredis
 from faster_whisper import WhisperModel
+import soundfile
 
 from .config import REDIS_SERVER
 from .utils import asyncformer
@@ -62,15 +63,20 @@ async def transcribe():
             CONVERSATION.append(text)
             translated = translate(text)
             logging.info(translated)
+            tasks = []
             for lang in translated:
                 lang_text = translated[lang]
                 logging.info(lang_text)
+                tasks.append(tts_and_push(lang_text, lang, redis))   
+            await asyncio.gather(tasks)
+            
 
-                wav = tts(lang_text)
-                soundfile.write(f"output_{lang}.wav", wav, 24000)
-                with open(f"output_{lang}.wav", 'rb') as f:
-                    await redis.rpush(f'STS:{lang}', f.read())
-                    logging.info(f'Sync {lang} tts to STS:{lang}')                
+async def tts_and_push(text, lang, redis):
+    wav = tts(text)
+    soundfile.write(f"output_{lang}.wav", wav, 24000)
+    with open(f"output_{lang}.wav", 'rb') as f:
+        await redis.rpush(f'STS:{lang}', f.read())
+        logging.info(f'Sync {lang} tts to STS:{lang}')  
 
 async def main():
     await asyncio.gather(transcribe())
