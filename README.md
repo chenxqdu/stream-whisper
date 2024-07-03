@@ -22,7 +22,8 @@
 git clone https://github.com/ultrasev/stream-whisper
 apt -y install libcublas11
 cd stream-whisper
-pip3 install -r requirements.txt
+pip install -r requirements.txt
+pip install --force-reinstall ctranslate2==3.24.0
 ```
 
 注：
@@ -48,6 +49,9 @@ pip install --global-option='build_ext' --global-option="-I$(brew --prefix)/incl
 git clone https://github.com/ultrasev/stream-whisper
 cd stream-whisper
 pip install -r requirements.txt
+pip install --force-reinstall ctranslate2==3.24.0
+# mac only
+pip install PyObjC
 ```
 
 注：

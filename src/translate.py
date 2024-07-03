@@ -11,11 +11,10 @@ client = boto3.client("bedrock-runtime", region_name="us-west-2")
 # Set the model ID, e.g., Claude 3 Haiku.
 model_id = "anthropic.claude-3-haiku-20240307-v1:0"
 
-system_message = """Fix the errors in the following text in <text></text> from auto speech recognition and translate it into Chinese, English and French using the following output format:
+system_message = """Fix the errors in the following text in <text></text> from auto speech recognition and translate it into Chinese and English using the following output format:
 {
   "zh": "Translation in Chinese",
-  "en": "Translation in English",
-  "fr": "Translation in French"
+  "en": "Translation in English"
 }
 """
 
@@ -42,12 +41,13 @@ def translate(text):
         )
         response_text = response["output"]["message"]["content"][0]["text"]
         logging.info(response_text)
+        response_text = response_text[response_text.find('{'):]
         translated_dict = json.loads(response_text)
         logging.info(translated_dict)
         return translated_dict
     except (ClientError, Exception) as e:
         print(f"ERROR: Can't invoke '{model_id}'. Reason: {e}")
-        return {"zh": "", "en": "", "fr": ""}
+        return {"zh": "", "en": ""}
 
 
 if __name__ == '__main__':

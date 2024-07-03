@@ -29,6 +29,7 @@ async def transcribe():
         segments, info = model.transcribe("chunk.wav",
                                           beam_size=5,
                                           no_speech_threshold=0.8,
+                                          repetition_penalty=2
                                          )
         end_time = time.time()
         period = end_time - start_time
