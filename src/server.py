@@ -66,6 +66,7 @@ async def transcribe():
             logging.info(translated)
             tasks = []
             for lang in translated:
+                # For demo purpose, you can tts to one language only
                 lang_text = translated[lang]
                 logging.info(lang_text)
                 tasks.append(tts_and_push(lang_text, lang, redis))   

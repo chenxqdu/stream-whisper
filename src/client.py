@@ -14,7 +14,8 @@ from .config import REDIS_SERVER
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
-CHUNK = 256
+# RATE = 48000
+CHUNK = 1024
 FRAME_DURATION = 30  # 毫秒
 FRAME_SIZE = int(RATE * FRAME_DURATION / 1000)
 
@@ -53,12 +54,12 @@ def record_until_silence():
     frames = collections.deque(maxlen=30)  # 保存最近 30 个帧
     tmp = collections.deque(maxlen=1000)
     vad = webrtcvad.Vad()
-    vad.set_mode(2)  # 敏感度，0 到 3，0 最不敏感，3 最敏感
+    vad.set_mode(1)  # 敏感度，0 到 3，0 最不敏感，3 最敏感
     triggered = False
     frames.clear()
     ratio = 0.5
     while True:
-        frame = stream.read(FRAME_SIZE)
+        frame = stream.read(FRAME_SIZE, exception_on_overflow = False)
         is_speech = vad.is_speech(frame, RATE)
         if not triggered:
             frames.append((frame, is_speech))

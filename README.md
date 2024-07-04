@@ -38,10 +38,14 @@ REDIS_SERVER=rediss://r-noel2j.serverless.usw2.cache.amazonaws.com:6379(base) sa
 ```
 
 ### 客户端
-负责录音，然后把音频数据发送给服务端，接收服务端返回的识别结果。测试场景M1 Mac
+负责录音，然后把音频数据发送给服务端，接收服务端返回的识别结果。
 
 ```bash
+# Mac M Series
 CONDA_SUBDIR=osx-arm64 conda create -n stream-whisper python python=3.11.8 -y
+# Mac Intel Series
+# conda create -n stream-whisper python python=3.11.8 -y
+
 conda activate stream-whisper
 brew install portaudio
 pip install --global-option='build_ext' --global-option="-I$(brew --prefix)/include" --global-option="-L$(brew --prefix)/lib" pyaudio
