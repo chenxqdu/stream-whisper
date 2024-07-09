@@ -10,6 +10,7 @@ import collections
 from collections import deque
 from .utils import asyncformer
 from .config import REDIS_SERVER
+import time
 
 # Generate a unique UUID for the client
 client_uuid = str(uuid.uuid4())
@@ -18,7 +19,7 @@ client_uuid = str(uuid.uuid4())
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
-CHUNK = 256
+CHUNK = 2048
 FRAME_DURATION = 30  # milliseconds
 FRAME_SIZE = int(RATE * FRAME_DURATION / 1000)
 
@@ -77,7 +78,7 @@ def record_until_silence():
             tmp.append(frame)
             num_unvoiced = len([f for f, speech in frames if not speech])
             if num_unvoiced > ratio * frames.maxlen:
-                logging.info("Stop recording...")
+                logging.info("Stop recording... ")
                 export_wav(tmp, 'output_zh.wav')
                 with open('output_zh.wav', 'rb') as f:
                     g_frames.appendleft(f.read())
@@ -92,6 +93,8 @@ async def receive_audio(lang):
         while True:
             # Get all UUIDs from Redis
             uuids = await redis.smembers('client_uuids')
+            logging.info(f"uuids: {uuids}")
+            # uuids = [uuid.decode('utf-8') for uuid in uuids]
             uuids = [uuid.decode() for uuid in uuids if uuid.decode() != client_uuid]
             if not uuids:
                 await asyncio.sleep(1)
@@ -99,17 +102,20 @@ async def receive_audio(lang):
 
             for uuid in uuids:
                 channel = f'STS:{lang}:{uuid}'
+                logging.info(f"sts {lang} {uuid}")
                 length = await redis.llen(channel)
                 if length > 10:
+                    logging.info(f"Received channel sets expiration {lang} {uuid}")
                     await redis.expire(channel, 1)
                 content = await redis.blpop(channel, timeout=0.1)
                 if content is None:
                     continue
                 logging.info(f"Received from {lang} {uuid}")
-                filename = f'received_{lang}_{uuid}.wav'
+                ts = time.time()
+                filename = f'received_{lang}_{uuid}_{ts}.wav'
                 with open(filename, 'wb') as f:
                     f.write(content[1])
-                    playsound(filename)
+                    playsound(filename,block=False)
                     logging.info(f"Played {filename}")
 
 import atexit
@@ -127,7 +133,7 @@ async def main():
         task1 = asyncio.create_task(record_audio())
         task2 = asyncio.create_task(sync_audio())
         task3 = asyncio.create_task(receive_audio('zh'))
-        await asyncio.gather(task1, task2,task3)
+        await asyncio.gather(task1, task2, task3)
     except KeyboardInterrupt:
         # Deregister client UUID
         await deregister_client()
