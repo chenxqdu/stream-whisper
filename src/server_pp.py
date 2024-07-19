@@ -16,16 +16,16 @@ CONVERSATION = deque(maxlen=100)
 MODEL_SIZE = "large-v3"
 CN_PROMPT = '聊一下基于faster-whisper的实时/低延迟语音转写服务'
 logging.basicConfig(level=logging.INFO)
-model = WhisperModel(MODEL_SIZE, device="auto", compute_type="default")
+model = WhisperModel(MODEL_SIZE, num_workers=4, device="auto", compute_type="default")
 logging.info('Model loaded')
 logging.getLogger("faster_whisper").setLevel(logging.ERROR)
 
 
 async def transcribe(uuid, audio_content):
     # Transcribe audio to text
-    def b_transcribe():
+    def b_transcribe(fname):
         start_time = time.time()
-        segments, info = model.transcribe("chunk.wav",
+        segments, info = model.transcribe(fname,
                                           beam_size=5,
                                           no_speech_threshold=0.8,
                                           repetition_penalty=2
@@ -42,18 +42,23 @@ async def transcribe(uuid, audio_content):
                 text += ', ' + t if text else t
         return text, period
 
-    with open('chunk.wav', 'wb') as f:
-        f.write(audio_content)
+    tmp = tempfile.NamedTemporaryFile(dir=".",suffix=".wav",delete=False)
+    logging.info(f"audio temp file: {tmp}")
+    tmp.write(audio_content)
+    tmp.close()
 
-    text, _period = await asyncformer(b_transcribe)
+    text, _period = await asyncformer(b_transcribe,tmp.name)
     t = text.strip().replace('.', '')
     if not t:
         return
 
     logging.info(f"Transcribed [{uuid}]: {t}")
     CONVERSATION.append(text)
+    time_translate_begin = time.time()
     translated = translate(text)
     logging.info(f"Translated [{uuid}]: {translated}")
+    time_translate_end = time.time()
+    logging.info(f"Translate time: {time_translate_begin - time_translate_end}")
     tasks = []
     for lang in translated:
         lang_text = translated[lang]
@@ -62,14 +67,24 @@ async def transcribe(uuid, audio_content):
 
     await asyncio.gather(*tasks)
 
+import tempfile
 
 async def tts_and_push(text, lang, uuid):
+    time_tts_begin = time.time()
+
     wav = tts(text)
-    soundfile.write(f"output_{uuid}_{lang}.wav", wav, 24000)
-    with open(f"output_{uuid}_{lang}.wav", 'rb') as f:
-        async with aioredis.from_url(REDIS_SERVER) as redis:
-            await redis.rpush(f'STS:{lang}:{uuid}', f.read())
-            logging.info(f'Sync {lang} TTS to STS:{lang}:{uuid}')
+    tmp = tempfile.TemporaryFile(dir=".",suffix=".wav")
+    logging.info(f"temp file: {tmp}")
+    soundfile.write(tmp, wav, 24000,format="WAV")
+    tmp.seek(0)
+    async with aioredis.from_url(REDIS_SERVER) as redis:
+        await redis.rpush(f'STS:{lang}:{uuid}', tmp.read())
+        logging.info(f'Sync {lang} TTS to STS:{lang}:{uuid}')
+    tmp.close()
+
+    time_tts_end = time.time()
+    logging.info(f"tts time: {time_tts_begin - time_tts_end}")
+
 
 
 async def receive_audio():
@@ -86,9 +101,9 @@ async def receive_audio():
                 uuid = uuidb.decode('utf-8')
                 channel = f'STS:AUDIOS:{uuid}'
                 logging.info(f"channel: {channel}")
-                length = await redis.llen(channel)
-                if length > 10:
-                    await redis.expire(channel, 1)
+                # length = await redis.llen(channel)
+                # if length > 10:
+                #     await redis.expire(channel, 1)
 
                 content = await redis.blpop(channel, timeout=0.1)
                 if content is None:
@@ -105,3 +120,4 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+

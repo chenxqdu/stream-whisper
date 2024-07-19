@@ -101,10 +101,10 @@ async def receive_audio(lang,client_uuid):
             for uuid in uuids:
                 channel = f'STS:{lang}:{uuid}'
                 logging.info(f"step5 Subscribe to sts {lang} {uuid}")
-                length = await redis.llen(channel)
-                if length > 10:
-                    logging.info(f"Received channel sets expiration {lang} {uuid}")
-                    await redis.expire(channel, 1)
+                # length = await redis.llen(channel)
+                # if length > 10:
+                #     logging.info(f"Received channel sets expiration {lang} {uuid}")
+                #     await redis.expire(channel, 1)
                 content = await redis.blpop(channel, timeout=0.1)
                 if content is None:
                     continue
@@ -130,8 +130,8 @@ async def deregister_client(client_uuid):
         await redis.srem('client_uuids', client_uuid)
         logging.info(f"deregister Client UUID: {client_uuid}")                  
 
-def exit_handler():
-    asyncio.run(deregister_client())
+def exit_handler(client_uuid):
+    asyncio.run(deregister_client(client_uuid))
 
 async def input_audio(client_uuid):
     try:
@@ -164,7 +164,7 @@ def run_coroutine(coro_func, *args):
         loop.close()
 
 if __name__ == "__main__":
-    atexit.register(exit_handler)
+    atexit.register(exit_handler,c_uuid)
     p1 = multiprocessing.Process(target=run_coroutine, args=(input_audio,c_uuid))
     p2 = multiprocessing.Process(target=run_coroutine, args=(output_audio,c_uuid))
     p1.start()
