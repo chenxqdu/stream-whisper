@@ -1,21 +1,30 @@
 import asyncio
 import collections
+import multiprocessing
+import sys
+import uuid
 import wave
 from collections import deque
 
+from playsound import playsound
 from redis import asyncio as aioredis
 import pyaudio
 import webrtcvad
 import logging
-from .utils import asyncformer
-from .config import REDIS_SERVER
+from utils import asyncformer
+from config import REDIS_SERVER
+
+import atexit
+
+# Generate a unique UUID for the client
+c_uuid = str(uuid.uuid4())
 
 # Audio recording parameters
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
 # RATE = 48000
-CHUNK = 1024
+CHUNK = 2048
 FRAME_DURATION = 30  # 毫秒
 FRAME_SIZE = int(RATE * FRAME_DURATION / 1000)
 
@@ -31,12 +40,13 @@ stream = audio.open(format=FORMAT,
                     frames_per_buffer=CHUNK)
 
 
-async def sync_audio():
+async def sync_audio(client_uuid):
     # Sync audio to redis server list STS:AUDIO
     async with aioredis.from_url(REDIS_SERVER) as redis:
         while True:
             if g_frames:
                 content = g_frames.pop()
+                await redis.rpush('STS:SEQS', client_uuid)
                 await redis.rpush('STS:AUDIOS', content)
                 logging.info('Sync audio to redis server')
 
@@ -75,8 +85,8 @@ def record_until_silence():
             num_unvoiced = len([f for f, speech in frames if not speech])
             if num_unvoiced > ratio * frames.maxlen:
                 logging.info("stop recording...")
-                export_wav(tmp, 'output.wav')
-                with open('output.wav', 'rb') as f:
+                export_wav(tmp, 'record.wav')
+                with open('record.wav', 'rb') as f:
                     g_frames.appendleft(f.read())
                 break
 
@@ -86,21 +96,85 @@ async def record_audio():
         await asyncformer(record_until_silence)
 
 
-async def main():
+def exit_handler(client_uuid):
+    asyncio.run(deregister_client(client_uuid))
+
+
+async def deregister_client(client_uuid):
+    async with aioredis.from_url(REDIS_SERVER) as redis:
+        await redis.srem('client_uuids', client_uuid)
+        #TODO deregister language
+        logging.info(f"deregister Client UUID: {client_uuid}")
+
+
+async def register_client(client_uuid, client_lang):
+    async with aioredis.from_url(REDIS_SERVER) as redis:
+        # Register client UUID
+        await redis.sadd('client_uuids', client_uuid)
+        # Register client Language
+        if client_lang not in await redis.smembers('client_langs'):
+            await redis.sadd('client_langs', client_lang)
+        logging.info(f"step1 register Client UUID:  {client_uuid} and Language: {client_lang}")
+
+
+async def input_audio(client_uuid, client_lang):
     try:
-        task2 = asyncio.create_task(record_audio())
-        task3 = asyncio.create_task(sync_audio())
-        await asyncio.gather(task2, task3)
+        task0 = asyncio.create_task(register_client(client_uuid, client_lang))
+        task1 = asyncio.create_task(record_audio())
+        task2 = asyncio.create_task(sync_audio(client_uuid))
+        await asyncio.gather(task0, task1, task2)
     except KeyboardInterrupt:
+        # Deregister client
+        await deregister_client(client_uuid)
         stream.stop_stream()
         stream.close()
         audio.terminate()
 
 
-def api():
-    return asyncio.run(main())
+async def receive_audio(client_uuid, client_lang):
+    async with aioredis.from_url(REDIS_SERVER) as redis:
+        while True:
+            # channel = f'STS:{client_lang}'
+            # length = await redis.llen(channel)
+            # if length > 10:
+            #     logging.info(f"Received channel sets expiration {client_lang} {client_uuid}")
+            #     await redis.expire(channel, 1)
+            content = await redis.blpop(f'STS:{client_lang}', timeout=0.1)
+            seq_uuid = await redis.blpop(f'STS:SEQS', timeout=0.1)
+            if content is None:
+                continue
+            if seq_uuid is None or client_uuid == seq_uuid[1].decode('utf-8'):
+                continue
+            with open(f'received_{client_lang}.wav', 'wb') as f:
+                f.write(content[1])
+                playsound(f'received_{client_lang}.wav', block=False)
+                logging.info(f"{client_lang} played")
+
+
+async def output_audio(client_uuid, client_lang):
+    try:
+        task3 = asyncio.create_task(receive_audio(client_uuid, client_lang))
+        await asyncio.gather(task3)
+    except KeyboardInterrupt:
+        # Deregister client
+        await deregister_client(client_uuid)
+
+
+def run_coroutine(coro_func, *args):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        coro = coro_func(*args)
+        loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 if __name__ == "__main__":
-    import fire
-    fire.Fire(api)
+    atexit.register(exit_handler, c_uuid)
+    p1 = multiprocessing.Process(target=run_coroutine, args=(input_audio, c_uuid, sys.argv[1]))
+    p2 = multiprocessing.Process(target=run_coroutine, args=(output_audio, c_uuid, sys.argv[1]))
+    p1.start()
+    p2.start()
+    p1.join()
+    p2.join()

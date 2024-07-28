@@ -44,15 +44,14 @@ async def transcribe():
         return text, period
 
     async with aioredis.from_url(REDIS_SERVER) as redis:
-        '-' * 81
         while True:
             length = await redis.llen('STS:AUDIOS')
             if length > 10:
                 await redis.expire('STS:AUDIOS', 1)
             content = await redis.blpop('STS:AUDIOS', timeout=0.1)
+            seq_uuid = await redis.blpop(f'STS:SEQS', timeout=0.1)
             if content is None:
                 continue
-
             with open('chunk.wav', 'wb') as f:
                 f.write(content[1])
 
