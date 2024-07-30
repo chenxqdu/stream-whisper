@@ -1,4 +1,5 @@
 redis
+PyObjC
 PyAudio==0.2.14
 webrtcvad==2.0.10
 python-dotenv==1.0.0
@@ -8,3 +9,4 @@ boto3
 soundfile
 playsound
 chattts-fork
+

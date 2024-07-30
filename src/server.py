@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import tempfile
 import time
 from collections import deque
 
@@ -21,66 +22,83 @@ logging.info('Model loaded')
 logging.getLogger("faster_whisper").setLevel(logging.ERROR)
 
 
-async def transcribe():
+async def transcribe(audio_content, client_uuid):
     # download audio from redis by popping from list: STS:AUDIO
-    def b_transcribe():
+    def b_transcribe(fname):
         # transcribe audio to text
         start_time = time.time()
-        segments, info = model.transcribe("chunk.wav",
+        segments, info = model.transcribe(fname,
                                           beam_size=5,
                                           no_speech_threshold=0.8,
                                           repetition_penalty=2
-                                         )
+                                          )
         end_time = time.time()
         period = end_time - start_time
         text = ''
         if info.language_probability < 0.8:
             return text, period
-            
+
         for segment in segments:
             t = segment.text
             if t.strip().replace('.', ''):
                 text += ', ' + t if text else t
         return text, period
 
+    tmp = tempfile.NamedTemporaryFile(dir=".", suffix=".wav")
+    logging.info(f"Input audio temp file: {tmp.name}")
+    tmp.write(audio_content)
+    text, _period = await asyncformer(b_transcribe, tmp.name)
+    logging.info(f"Transcribe time: {_period }")
+    tmp.close()
+    t = text.strip().replace('.', '')
+    if not t:
+        return
+
+    CONVERSATION.append(text)
+    time_translate_begin = time.time()
+    translated = translate(text)
+    time_translate_end = time.time()
+    logging.info(f"Translate time: {time_translate_end - time_translate_begin }")
+    tasks = []
+    for lang in translated:
+        lang_text = translated[lang]
+        # logging.info(f"Translated content {lang}: {lang_text}")
+        tasks.append(tts_and_push(lang_text, lang, client_uuid))
+
+    await asyncio.gather(*tasks)
+
+
+async def tts_and_push(text, lang, client_uuid):
+    time_tts_begin = time.time()
+    wav = tts(text)
+    tmp = tempfile.NamedTemporaryFile(dir=".", suffix=".wav")
+    logging.info(f"tts {lang} temp file: {tmp.name}")
+    soundfile.write(tmp, wav, 24000, format="WAV")
+    tmp.seek(0)
+    async with aioredis.from_url(REDIS_SERVER) as redis:
+        for iter_id in await redis.smembers('client_uuids'):
+            c_id = iter_id.decode('utf-8')
+            await redis.rpush(f'STS:SEQS:{c_id}', client_uuid)
+        await redis.rpush(f'STS:{lang}', tmp.read())
+        logging.info(f'Sync {lang} tts to STS:{lang}')
+    tmp.close()
+    time_tts_end = time.time()
+    logging.info(f"tts time: {time_tts_end - time_tts_begin }")
+
+
+async def receive_audio():
     async with aioredis.from_url(REDIS_SERVER) as redis:
         while True:
-            length = await redis.llen('STS:AUDIOS')
-            if length > 10:
-                await redis.expire('STS:AUDIOS', 1)
             content = await redis.blpop('STS:AUDIOS', timeout=0.1)
-            seq_uuid = await redis.blpop(f'STS:SEQS', timeout=0.1)
             if content is None:
                 continue
-            with open('chunk.wav', 'wb') as f:
-                f.write(content[1])
+            audio_content = content[1]
+            seq_id = await redis.blpop('STS:SEQS', timeout=0.1)
+            await transcribe(audio_content, seq_id[1].decode('utf-8'))
 
-            text, _period = await asyncformer(b_transcribe)
-            t = text.strip().replace('.', '')
-            if not t:
-                continue
-            logging.info(t)
-            CONVERSATION.append(text)
-            translated = translate(text)
-            logging.info(translated)
-            tasks = []
-            for lang in translated:
-                # For demo purpose, you can tts to one language only
-                lang_text = translated[lang]
-                logging.info(lang_text)
-                tasks.append(tts_and_push(lang_text, lang, redis))   
-            await asyncio.gather(*tasks)
-            
-
-async def tts_and_push(text, lang, redis):
-    wav = tts(text)
-    soundfile.write(f"output_{lang}.wav", wav, 24000)
-    with open(f"output_{lang}.wav", 'rb') as f:
-        await redis.rpush(f'STS:{lang}', f.read())
-        logging.info(f'Sync {lang} tts to STS:{lang}')  
 
 async def main():
-    await asyncio.gather(transcribe())
+    await asyncio.gather(receive_audio())
 
 
 if __name__ == '__main__':

@@ -2,6 +2,7 @@ import asyncio
 import collections
 import multiprocessing
 import sys
+import tempfile
 import uuid
 import wave
 from collections import deque
@@ -11,8 +12,8 @@ from redis import asyncio as aioredis
 import pyaudio
 import webrtcvad
 import logging
-from utils import asyncformer
-from config import REDIS_SERVER
+from src.utils import asyncformer
+from src.config import REDIS_SERVER
 
 import atexit
 
@@ -46,8 +47,9 @@ async def sync_audio(client_uuid):
         while True:
             if g_frames:
                 content = g_frames.pop()
-                await redis.rpush('STS:SEQS', client_uuid)
-                await redis.rpush('STS:AUDIOS', content)
+                if client_uuid is not None and content is not None:
+                    await redis.rpush('STS:SEQS', client_uuid)
+                    await redis.rpush('STS:AUDIOS', content)
                 logging.info('Sync audio to redis server')
 
 
@@ -69,7 +71,7 @@ def record_until_silence():
     frames.clear()
     ratio = 0.5
     while True:
-        frame = stream.read(FRAME_SIZE, exception_on_overflow = False)
+        frame = stream.read(FRAME_SIZE, exception_on_overflow=False)
         is_speech = vad.is_speech(frame, RATE)
         if not triggered:
             frames.append((frame, is_speech))
@@ -134,21 +136,18 @@ async def input_audio(client_uuid, client_lang):
 async def receive_audio(client_uuid, client_lang):
     async with aioredis.from_url(REDIS_SERVER) as redis:
         while True:
-            # channel = f'STS:{client_lang}'
-            # length = await redis.llen(channel)
-            # if length > 10:
-            #     logging.info(f"Received channel sets expiration {client_lang} {client_uuid}")
-            #     await redis.expire(channel, 1)
             content = await redis.blpop(f'STS:{client_lang}', timeout=0.1)
-            seq_uuid = await redis.blpop(f'STS:SEQS', timeout=0.1)
+            seq_uuid = await redis.blpop(f'STS:SEQS:{client_uuid}', timeout=0.1)
             if content is None:
                 continue
-            if seq_uuid is None or client_uuid == seq_uuid[1].decode('utf-8'):
+            if seq_uuid is not None and client_uuid == seq_uuid[1].decode('utf-8'):
                 continue
-            with open(f'received_{client_lang}.wav', 'wb') as f:
-                f.write(content[1])
-                playsound(f'received_{client_lang}.wav', block=False)
-                logging.info(f"{client_lang} played")
+            tmp = tempfile.NamedTemporaryFile(dir=".", suffix=".wav")
+            logging.info(f"Output audio temp file: {tmp.name}")
+            tmp.write(content[1])
+            playsound(tmp.name, block=False)
+            logging.info(f"{client_lang} played")
+            tmp.close()
 
 
 async def output_audio(client_uuid, client_lang):
