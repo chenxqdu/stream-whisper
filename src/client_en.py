@@ -92,16 +92,16 @@ async def receive_audio(lang,client_uuid):
             # Get all UUIDs from Redis
             uuids = await redis.smembers('client_uuids')
             # logging.info(f"all uuids: {uuids}")
-            uuids = [uuid.decode('utf-8') for uuid in uuids]
-            # uuids = [uuid.decode('utf-8') for uuid in uuids if uuid.decode('utf-8') != client_uuid]
+            # uuids = [uuid.decode('utf-8') for uuid in uuids]
+            uuids = [uuid.decode('utf-8') for uuid in uuids if uuid.decode('utf-8') != client_uuid]
             if not uuids:
                 await asyncio.sleep(1)
                 continue
 
             for uuid in uuids:
                 channel = f'STS:{lang}:{uuid}'
-                # logging.info(f"step5 Subscribe to sts {lang} {uuid}")
-                length = await redis.llen(channel)
+                logging.info(f"step5 Subscribe to sts {lang} {uuid}")
+                # length = await redis.llen(channel)
                 # if length > 10:
                 #     logging.info(f"Received channel sets expiration {lang} {uuid}")
                 #     await redis.expire(channel, 1)

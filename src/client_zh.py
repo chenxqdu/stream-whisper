@@ -91,7 +91,7 @@ async def receive_audio(lang,client_uuid):
         while True:
             # Get all UUIDs from Redis
             uuids = await redis.smembers('client_uuids')
-            logging.info(f"all uuids: {uuids}")
+            # logging.info(f"all uuids: {uuids}")
             # uuids = [uuid.decode('utf-8') for uuid in uuids]
             uuids = [uuid.decode('utf-8') for uuid in uuids if uuid.decode('utf-8') != client_uuid]
             if not uuids:
